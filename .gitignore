@@ -44,3 +44,4 @@ example
 
 # local env (may hold PRIVY_APP_SECRET); commit .env.example instead
 .env
+.demo-peer*.json
