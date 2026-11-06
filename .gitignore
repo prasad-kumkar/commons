@@ -41,3 +41,6 @@ example
 # generated native folders
 /ios
 /android
+
+# local env (may hold PRIVY_APP_SECRET); commit .env.example instead
+.env
