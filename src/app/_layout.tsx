@@ -3,6 +3,7 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { ActivityIndicator, StyleSheet, useColorScheme } from 'react-native';
 
 import { ThemedView } from '@/components/themed-view';
+import { NostrProvider } from '@/hooks/use-nostr';
 import { WalletsProvider } from '@/hooks/use-wallets';
 import { QueryProvider } from '@/lib/query-client';
 
@@ -21,9 +22,11 @@ export default function RootLayout() {
     <PrivyProvider appId={appId} clientId={clientId}>
       <QueryProvider>
         <WalletsProvider>
-          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <RootNavigator />
-          </ThemeProvider>
+          <NostrProvider>
+            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+              <RootNavigator />
+            </ThemeProvider>
+          </NostrProvider>
         </WalletsProvider>
       </QueryProvider>
     </PrivyProvider>
@@ -54,6 +57,12 @@ function RootNavigator() {
         <Stack.Screen name="notifications" options={{ headerShown: true, title: 'Notifications' }} />
         <Stack.Screen name="signatures" options={{ headerShown: true, title: 'Signature lab' }} />
         <Stack.Screen name="deposit/[network]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="compose" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="tip/[pubkey]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="note/[id]" options={{ headerShown: true, title: 'Post' }} />
+        <Stack.Screen name="user/[pubkey]" options={{ headerShown: true, title: '' }} />
+        <Stack.Screen name="dm/[pubkey]" options={{ headerShown: true, title: '' }} />
+        <Stack.Screen name="edit-profile" options={{ headerShown: true, title: 'Edit profile' }} />
       </Stack.Protected>
     </Stack>
   );
