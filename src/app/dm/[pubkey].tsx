@@ -18,7 +18,7 @@ export default function Chat() {
   const theme = useTheme();
   const me = useNostr().pubkey;
   const { data: profile } = useProfile(peer);
-  const dms = useConversations();
+  const dms = useConversations({ live: true });
   const send = useSendDM();
   const [text, setText] = useState('');
   const messages = dms.data?.find((c) => c.peer === peer)?.messages ?? [];

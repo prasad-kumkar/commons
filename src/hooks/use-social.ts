@@ -276,12 +276,13 @@ function toMessage(ev: Event, me: string, sk: Uint8Array): Message | null {
 }
 
 /** NIP-17 private messages (plus legacy NIP-04 for older clients), grouped by peer. */
-export function useConversations() {
+export function useConversations({ live = false }: { live?: boolean } = {}) {
   const { pubkey, secretKey } = useNostr();
   return useQuery({
     queryKey: ['dms', pubkey],
     enabled: !!pubkey && !!secretKey,
-    refetchInterval: 15_000,
+    // An open chat polls faster so replies feel live.
+    refetchInterval: live ? 4_000 : 15_000,
     queryFn: async (): Promise<Conversation[]> => {
       const me = pubkey!;
       const [wraps, legacyIn, legacyOut] = await Promise.all([
