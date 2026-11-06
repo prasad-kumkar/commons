@@ -1,56 +1,83 @@
-# Welcome to your Expo app 👋
+# nostr-privy
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Bare-shell Nostr client on Expo SDK 58 + Expo Router, authenticated with Privy.
 
-## Get started
+## Stack
+- Expo SDK 58 / React Native 0.88 / React 19.3, New Architecture, React Compiler
+- Expo Router (typed routes), TypeScript strict
+- `@privy-io/expo` (email OTP + Google OAuth)
 
-1. Install dependencies
+## Config
+| What | Value |
+| --- | --- |
+| Privy app | Commons (`cmtye8sa401b10djjptt2fzhr`) |
+| Privy mobile client | `nostr-mobile` |
+| Bundle ID / package | `com.chainscore.nostr` |
+| URL scheme | `nostrprivy` |
+| Google OAuth | GCP project `commons-nostr`, web client `privy-commons`, redirect `https://auth.privy.io/api/v1/oauth/callback` |
 
-   ```bash
-   npm install
-   ```
+Public IDs live in `.env` (`EXPO_PUBLIC_PRIVY_APP_ID`, `EXPO_PUBLIC_PRIVY_CLIENT_ID`).
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run
+Privy doesn't run in Expo Go or on web — use a dev build:
 
 ```bash
-npm run reset-project
+npm install
+LANG=en_US.UTF-8 npm run ios   # expo run:ios (needs Xcode; UTF-8 avoids a CocoaPods crash)
+npm run android   # expo run:android
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+or in the cloud: `npx eas-cli@latest build --profile development`.
 
-### Other setup steps
+## Layout
+- `entrypoint.js`: loads Privy polyfills before expo-router
+- `metro.config.js`: Privy's resolver tweaks (isows, zustand, jose)
+- `src/app/_layout.tsx`: `PrivyProvider` + `WalletsProvider`; auth gate via `Stack.Protected`
+- `src/app/sign-in.tsx`: email OTP + Google (`components/login-screen.tsx`)
+- `src/app/(tabs)/`: native tabs: Home (avatar → Profile, bell → Notifications), Search, Wallet, DMs
+- `src/app/profile.tsx`, `src/app/notifications.tsx`: pushed pages
+- `src/app/deposit/[network].tsx`: deposit sheet (QR, copy, network warning)
+- `src/hooks/use-wallets.tsx`: creates/reads EVM, Solana and Bitcoin wallets once per user
+- `src/lib/networks.ts`: networks, address types, tokens (native + USDC), RPC URLs
+- `src/lib/balances.ts` + `src/hooks/use-balances.ts`: keyless balance/price reads via TanStack Query
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Wallets
+The app uses Privy **TEE** wallet execution.
+- EVM + Solana: `useEmbeddedEthereumWallet` / `useEmbeddedSolanaWallet`.
+- Bitcoin: two address types, Native SegWit (`bc1q…`) and Taproot (`bc1p…`); Privy has no legacy (`1…`) or nested SegWit (`3…`). Extended chain: Create with `useCreateWallet({ chainType: 'bitcoin-segwit' })`
+  and sign with `useSignRawHash` (both `@privy-io/expo/extended-chains`). To send BTC, build the PSBT in-app
+  (e.g. `@scure/btc-signer`), sign each input's sighash with `useSignRawHash`, then finalize and broadcast.
+  Privy requires an EVM or Solana wallet before Bitcoin.
 
-## Learn more
+## Balances
+Total balance = native token + USDC on every EVM chain and Solana, plus BTC across both address types, priced in USD.
+Sources (public, keyless, rate-limited; swap for paid providers before launch): publicnode RPCs (EVM), Solana mainnet RPC,
+mempool.space (BTC, includes unconfirmed), CoinGecko (prices). Refreshes on pull, on app foreground, and when stale (60s).
 
-To learn more about developing your project with Expo, look at the following resources:
+## Testnet
+`EXPO_PUBLIC_CHAIN_ENV=testnet` (default) uses Sepolia, Base Sepolia, Arbitrum Sepolia, OP Sepolia, Polygon Amoy,
+Solana Devnet and Bitcoin Testnet4. Same keys as mainnet; Bitcoin addresses are re-encoded `bc1…` → `tb1…`
+(`src/lib/bitcoin.ts`). Circle's faucet (faucet.circle.com) funds USDC on every supported testnet.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Signature lab (Profile → Signature lab)
+Signs with Privy and verifies on-device. All pass on TEE wallets:
+EVM `personal_sign`, `eth_signTypedData_v4`, `eth_signTransaction`, `secp256k1_sign`, EIP-7702 authorization;
+Solana `signMessage` (message is **base64** bytes), `signTransaction`; Bitcoin `useSignRawHash` for SegWit (ECDSA)
+and Taproot (BIP-340 Schnorr, signs with the tweaked output key).
 
-## Join the community
+## Gas sponsorship
+Enabled in the Privy dashboard (Fee sponsorship) for Sepolia, Base Sepolia, OP Sepolia, Arbitrum Sepolia, Amoy and
+Solana Devnet, with **Allow transactions from the client** on. No server or app secret needed:
+`src/hooks/use-sponsored-send.ts` calls Privy's Wallet API `rpc` (from `@privy-io/js-sdk-core`, pinned to the version
+`@privy-io/expo` uses) with `sponsor: true`, and each request is signed by the user's own authorization key
+(`useAuthorizationSignature`), so it can only move that user's funds.
 
-Join our community of developers creating universal apps.
+Verified on testnet (Signature lab → Sponsored): a USDC transfer on Base Sepolia and a Solana Devnet transfer both
+confirmed from wallets holding 0 ETH / 0 SOL. On EVM, Privy sponsors via **EIP-7702**: the first sponsored tx
+delegates the EOA to Privy's smart-account code (`eth_getCode` shows `0xef0100…`).
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Before mainnet: client-side sponsorship lets any signed-in user spend your gas credits. Add Privy policies/limits or
+move sponsored sends to a server and turn the client toggle off.
+
+## Next: Nostr keys
+Privy embedded wallets sign ECDSA (secp256k1), but Nostr events need BIP-340 Schnorr signatures, so they can't sign Nostr events directly. Options: deterministically derive a Nostr key from a Privy wallet signature, or generate an nsec and keep it in `expo-secure-store`.
