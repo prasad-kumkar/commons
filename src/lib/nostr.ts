@@ -1,14 +1,30 @@
 import type { Event } from 'nostr-tools/core';
 import type { Filter } from 'nostr-tools/filter';
 import * as nip19 from 'nostr-tools/nip19';
-import { SimplePool } from 'nostr-tools/pool';
+import { AbstractSimplePool } from 'nostr-tools/abstract-pool';
+import { verifyEvent } from 'nostr-tools/pure';
 
 /** Read/write relays. Checked for kind 1, 3, 7, 1059 support. */
 export const RELAYS = ['wss://nos.lol', 'wss://relay.snort.social', 'wss://offchain.pub', 'wss://relay.damus.io'];
 /** Relays that answer NIP-50 `search` filters. */
 export const SEARCH_RELAYS = ['wss://relay.ditto.pub', 'wss://nostr.wine', 'wss://search.nos.today'];
 
-export const pool = new SimplePool({ enablePing: true, enableReconnect: true });
+/**
+ * Signature checks are BigInt-heavy and slow in Hermes, so the pool doesn't verify every
+ * event a relay sends (a feed query can return hundreds). Instead the app verifies the
+ * events it shows or acts on with `verified()`; only aggregate counts use unverified data.
+ */
+export const pool = new AbstractSimplePool({
+  verifyEvent: () => true,
+  websocketImplementation: WebSocket,
+  maxWaitForConnection: 2500,
+  enablePing: true,
+  enableReconnect: true,
+});
+
+export function verified(events: Event[]): Event[] {
+  return events.filter((e) => verifyEvent(e));
+}
 
 export const Kind = {
   Metadata: 0,
@@ -131,8 +147,8 @@ async function flushProfiles() {
     console.warn('[nostr] profile batch failed', err);
   }
   for (const pk of authors) {
-    // query() sorts newest first, so the first match is the current profile.
-    const profile = parseProfile(events.find((e) => e.pubkey === pk));
+    // query() sorts newest first, so the first valid match is the current profile.
+    const profile = parseProfile(events.find((e) => e.pubkey === pk && verifyEvent(e)));
     for (const resolve of batch.get(pk) ?? []) resolve(profile);
   }
 }

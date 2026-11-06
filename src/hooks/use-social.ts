@@ -17,6 +17,7 @@ import {
   RELAYS,
   replyTags,
   SEARCH_RELAYS,
+  verified,
   type Profile,
   type Tip,
 } from '@/lib/nostr';
@@ -52,7 +53,7 @@ export function useUpdateProfile() {
 export function useContacts(pubkey: string | null | undefined) {
   return useQuery({
     queryKey: ['contacts', pubkey],
-    queryFn: async () => (await query({ kinds: [Kind.Contacts], authors: [pubkey!], limit: 1 }))[0] ?? null,
+    queryFn: async () => verified(await query({ kinds: [Kind.Contacts], authors: [pubkey!], limit: 2 }))[0] ?? null,
     enabled: !!pubkey,
     staleTime: 60_000,
     select: (ev) => ({ event: ev, follows: ev ? ev.tags.filter((t) => t[0] === 'p').map((t) => t[1]!) : [] }),
@@ -66,7 +67,7 @@ export function useFollow() {
     mutationFn: async ({ target, follow }: { target: string | string[]; follow: boolean }) => {
       // Always start from the freshest list so we never drop follows made in another client.
       const latest =
-        (await query({ kinds: [Kind.Contacts], authors: [pubkey!], limit: 1 }, RELAYS, 1500))[0] ??
+        verified(await query({ kinds: [Kind.Contacts], authors: [pubkey!], limit: 2 }, RELAYS, 1500))[0] ??
         (qc.getQueryData(['contacts', pubkey]) as Event | null) ??
         null;
       const targets = new Set(Array.isArray(target) ? target : [target]);
@@ -97,8 +98,8 @@ export function useFeed(authors: string[] | undefined) {
   return useQuery({
     queryKey: ['feed', authors],
     queryFn: async () => {
-      const events = await query({ kinds: [Kind.Note], authors, limit: 400 }, RELAYS, 5000);
-      return events.filter((e) => !isReply(e)).slice(0, 60);
+      const events = await query({ kinds: [Kind.Note], authors, limit: 300 }, RELAYS, 3000);
+      return verified(events.filter((e) => !isReply(e)).slice(0, 60));
     },
     enabled: !!authors && authors.length > 0,
     staleTime: 30_000,
@@ -108,7 +109,7 @@ export function useFeed(authors: string[] | undefined) {
 export function useUserNotes(pubkey: string | undefined) {
   return useQuery({
     queryKey: ['notes', pubkey],
-    queryFn: async () => (await query({ kinds: [Kind.Note], authors: [pubkey!], limit: 40 })).filter((e) => !isReply(e)),
+    queryFn: async () => verified((await query({ kinds: [Kind.Note], authors: [pubkey!], limit: 40 })).filter((e) => !isReply(e))),
     enabled: !!pubkey,
   });
 }
@@ -116,7 +117,7 @@ export function useUserNotes(pubkey: string | undefined) {
 export function useNote(id: string | undefined) {
   return useQuery({
     queryKey: ['note', id],
-    queryFn: async () => (await query({ ids: [id!] }))[0] ?? null,
+    queryFn: async () => verified(await query({ ids: [id!] }))[0] ?? null,
     enabled: !!id,
     staleTime: Infinity,
   });
@@ -125,7 +126,7 @@ export function useNote(id: string | undefined) {
 export function useReplies(id: string | undefined) {
   return useQuery({
     queryKey: ['replies', id],
-    queryFn: async () => (await query({ kinds: [Kind.Note], '#e': [id!], limit: 100 })).reverse(),
+    queryFn: async () => verified(await query({ kinds: [Kind.Note], '#e': [id!], limit: 100 })).reverse(),
     enabled: !!id,
   });
 }
@@ -212,7 +213,7 @@ export function useNotifications() {
   return useQuery({
     queryKey: ['notifications', pubkey],
     queryFn: async () =>
-      (await query({ kinds: [Kind.Note, Kind.Reaction], '#p': [pubkey!], limit: 60 })).filter((e) => e.pubkey !== pubkey),
+      verified((await query({ kinds: [Kind.Note, Kind.Reaction], '#p': [pubkey!], limit: 60 })).filter((e) => e.pubkey !== pubkey)),
     enabled: !!pubkey,
     refetchInterval: 30_000,
   });
@@ -238,7 +239,7 @@ export function useSearch(term: string) {
         query({ kinds: [Kind.Note], search: q, limit: 30 }, SEARCH_RELAYS, 5000),
       ]);
       const people = [...new Set(profiles.map((e) => e.pubkey))];
-      return { people, notes: notes.filter((e) => !isReply(e)) };
+      return { people, notes: verified(notes.filter((e) => !isReply(e))) };
     },
   });
 }
@@ -287,8 +288,8 @@ export function useConversations({ live = false }: { live?: boolean } = {}) {
       const me = pubkey!;
       const [wraps, legacyIn, legacyOut] = await Promise.all([
         query({ kinds: [Kind.GiftWrap], '#p': [me], limit: 300 }),
-        query({ kinds: [Kind.LegacyDM], '#p': [me], limit: 100 }),
-        query({ kinds: [Kind.LegacyDM], authors: [me], limit: 100 }),
+        query({ kinds: [Kind.LegacyDM], '#p': [me], limit: 100 }).then(verified),
+        query({ kinds: [Kind.LegacyDM], authors: [me], limit: 100 }).then(verified),
       ]);
       const byPeer = new Map<string, Map<string, Message>>();
       for (const ev of [...wraps, ...legacyIn, ...legacyOut]) {
