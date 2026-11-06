@@ -3,15 +3,20 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Avatar } from '@/components/avatar';
+import * as Clipboard from 'expo-clipboard';
+
+import { PubkeyAvatar } from '@/components/avatar';
 import { Button } from '@/components/button';
 import { Screen } from '@/components/screen';
 import { ErrorText } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { useNostr } from '@/hooks/use-nostr';
+import { useProfile } from '@/hooks/use-social';
 import { useTheme } from '@/hooks/use-theme';
 import { shortAddress } from '@/lib/networks';
+import { displayName, npub } from '@/lib/nostr';
 import { describeUser } from '@/lib/user';
 
 type Account = { type: string } & Record<string, unknown>;
@@ -63,9 +68,13 @@ export default function ProfilePage() {
   const theme = useTheme();
   const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const { pubkey } = useNostr();
+  const { data: nostrProfile } = useProfile(pubkey);
 
   if (!user) return null;
-  const { name, handle, initials } = describeUser(user);
+  const { name: privyName, handle } = describeUser(user);
+  const name = pubkey && nostrProfile ? displayName(nostrProfile, pubkey) : privyName;
   const accounts = (user.linked_accounts as unknown as Account[]).map(describeAccount);
 
   async function onLogout() {
@@ -83,7 +92,7 @@ export default function ProfilePage() {
   return (
     <Screen edges={['bottom']}>
       <View style={styles.identity}>
-        <Avatar initials={initials} size={72} />
+        {pubkey ? <PubkeyAvatar pubkey={pubkey} size={72} /> : null}
         <View style={styles.identityText}>
           <ThemedText type="subtitle" numberOfLines={1}>
             {name}
@@ -95,6 +104,41 @@ export default function ProfilePage() {
           ) : null}
         </View>
       </View>
+
+      {pubkey ? (
+        <ThemedView type="backgroundElement" style={styles.card}>
+          <ThemedText type="smallBold" themeColor="textSecondary">
+            Nostr identity
+          </ThemedText>
+          <ThemedText type="code" selectable>
+            {npub(pubkey)}
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            Derived from your Privy wallet: same login, same key on any device. No seed phrase.
+          </ThemedText>
+          <View style={styles.buttons}>
+            <View style={styles.flex}>
+              <Button
+                variant="secondary"
+                title="My posts"
+                onPress={() => router.push({ pathname: '/user/[pubkey]', params: { pubkey } })}
+              />
+            </View>
+            <View style={styles.flex}>
+              <Button variant="secondary" title="Edit profile" onPress={() => router.push('/edit-profile')} />
+            </View>
+          </View>
+          <Button
+            variant="link"
+            title={copied ? 'Copied npub' : 'Copy npub'}
+            onPress={async () => {
+              await Clipboard.setStringAsync(npub(pubkey));
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+          />
+        </ThemedView>
+      ) : null}
 
       <ThemedView type="backgroundElement" style={styles.card}>
         <ThemedText type="smallBold" themeColor="textSecondary">
@@ -154,5 +198,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one,
   },
   rowLabel: { fontWeight: 600 },
+  buttons: { flexDirection: 'row', gap: Spacing.two },
+  flex: { flex: 1 },
   rowDetail: { flexShrink: 1, textAlign: 'right' },
 });
