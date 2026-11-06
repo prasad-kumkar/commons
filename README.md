@@ -1,6 +1,11 @@
-# nostr-privy
+# Commons
 
-Bare-shell Nostr client on Expo SDK 58 + Expo Router, authenticated with Privy.
+A Nostr social client with a built-in multichain wallet, on Expo SDK 58 + Expo Router, authenticated with Privy.
+
+- **Social (Nostr):** home feed of people you follow, posting, replies and threads, likes, profiles with
+  follow/unfollow, profile editing, NIP-50 search (people + posts, npub, NIP-05), notifications (replies,
+  mentions, likes, tips) and end-to-end encrypted DMs (NIP-17 gift wraps; NIP-04 read for older clients).
+- **Money:** gasless USDC tips on any post or profile, plus balances and deposit addresses on EVM, Solana and Bitcoin.
 
 ## Stack
 - Expo SDK 58 / React Native 0.88 / React 19.3, New Architecture, React Compiler
@@ -34,7 +39,8 @@ or in the cloud: `npx eas-cli@latest build --profile development`.
 - `metro.config.js`: Privy's resolver tweaks (isows, zustand, jose)
 - `src/app/_layout.tsx`: `PrivyProvider` + `WalletsProvider`; auth gate via `Stack.Protected`
 - `src/app/sign-in.tsx`: email OTP + Google (`components/login-screen.tsx`)
-- `src/app/(tabs)/`: native tabs: Home (avatar → Profile, bell → Notifications), Search, Wallet, DMs
+- `src/app/(tabs)/`: native tabs: Home feed (avatar → Profile, compose, bell → Notifications), Search, Wallet, DMs
+- `src/app/compose.tsx`, `note/[id].tsx`, `user/[pubkey].tsx`, `dm/[pubkey].tsx`, `tip/[pubkey].tsx`, `edit-profile.tsx`
 - `src/app/profile.tsx`, `src/app/notifications.tsx`: pushed pages
 - `src/app/deposit/[network].tsx`: deposit sheet (QR, copy, network warning)
 - `src/hooks/use-wallets.tsx`: creates/reads EVM, Solana and Bitcoin wallets once per user
@@ -79,5 +85,36 @@ delegates the EOA to Privy's smart-account code (`eth_getCode` shows `0xef0100�
 Before mainnet: client-side sponsorship lets any signed-in user spend your gas credits. Add Privy policies/limits or
 move sponsored sends to a server and turn the client toggle off.
 
-## Next: Nostr keys
-Privy embedded wallets sign ECDSA (secp256k1), but Nostr events need BIP-340 Schnorr signatures, so they can't sign Nostr events directly. Options: deterministically derive a Nostr key from a Privy wallet signature, or generate an nsec and keep it in `expo-secure-store`.
+## Nostr identity (`src/hooks/use-nostr.tsx`)
+Nostr needs a raw secp256k1 key in the app: events are BIP-340 Schnorr signatures and DMs need ECDH (NIP-44),
+which a remote signer can't do. So after login the app asks the Privy EVM wallet for a `personal_sign` over a
+fixed message, runs the signature through HKDF-SHA256 and uses the result as the Nostr secret key. ECDSA signing is
+deterministic (RFC 6979), so the same login gives the same npub on any device, with no seed phrase or nsec to back
+up. The key is cached in the iOS Keychain (`expo-secure-store`, this-device-only) and never leaves the phone.
+
+On first run the app publishes a starter profile (kind 0, name from the Privy login, generated avatar, and the
+EVM address for tips) and a NIP-17 DM relay list (kind 10050).
+
+## Social layer
+- `src/lib/nostr.ts`: relays, one shared `SimplePool`, publish-on-first-ack, batched profile loading (one kind-0
+  query per render tick instead of one per avatar), NIP-10 reply helpers.
+- `src/hooks/use-social.ts`: TanStack Query hooks for profiles, contacts (kind 3, optimistic follow), feed,
+  threads, engagement counts (likes/replies/tips for a whole feed in one query), notifications, search, DMs.
+- DMs: one kind-14 rumor sealed and gift-wrapped twice (recipient + self), sent to the recipient's kind-10050
+  relays. Unwrapped messages are memoised, since each one costs two ECDH operations.
+- Relays: nos.lol, relay.snort.social, offchain.pub, relay.damus.io; search via relay.ditto.pub, nostr.wine,
+  search.nos.today.
+
+## Tips (`src/app/tip/[pubkey].tsx`)
+Profiles can publish an `evm_address` (toggle in Edit profile). Tipping sends USDC on Base (Base Sepolia on testnet)
+through the sponsored-send path above, so the tipper needs no ETH. The tip is then announced as a 💸 reaction
+(kind 7) with a `["tip", amount, "USDC", caip2, txHash]` tag, which shows up in the author's notifications and
+the post's tip count.
+
+## Demo peer
+`scripts/demo-peer.mjs` drives a second Nostr account for testing DMs, replies and likes from the other side:
+
+```bash
+DEMO_PEER_FILE=/somewhere/outside/the/repo/peer.json node scripts/demo-peer.mjs setup
+DEMO_PEER_FILE=... node scripts/demo-peer.mjs dm <npub> "hello"
+```
