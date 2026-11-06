@@ -1,6 +1,4 @@
 import { useEmbeddedEthereumWallet, usePrivy } from '@privy-io/expo';
-import { hkdf } from '@noble/hashes/hkdf';
-import { sha256 } from '@noble/hashes/sha2';
 import { useQueryClient } from '@tanstack/react-query';
 import * as SecureStore from 'expo-secure-store';
 import type { Event, EventTemplate } from 'nostr-tools/core';
@@ -8,6 +6,7 @@ import { finalizeEvent, getPublicKey } from 'nostr-tools/pure';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { bytesToHex, hexToBytes, type Hex } from 'viem';
 
+import { DERIVE_MESSAGE, deriveSecretKey } from '@/lib/nostr-key';
 import { avatarFallback, Kind, parseProfile, publish, query, RELAYS, type Profile } from '@/lib/nostr';
 import { describeUser } from '@/lib/user';
 
@@ -20,9 +19,6 @@ import { describeUser } from '@/lib/user';
  * wallet over a fixed message, run through HKDF. Same Privy login → same Nostr key on
  * any device, with no seed phrase to back up. The key is cached in the Keychain.
  */
-export const DERIVE_MESSAGE =
-  'Commons: unlock my Nostr identity\n\nSigning this creates your Nostr key for Commons. It does not move funds or cost gas.';
-
 type Status = { state: 'deriving' } | { state: 'ready' } | { state: 'error'; message: string };
 
 type Nostr = {
@@ -86,7 +82,7 @@ function NostrState({ children }: { children: ReactNode }) {
             method: 'personal_sign',
             params: [DERIVE_MESSAGE, wallet.address],
           })) as Hex;
-          sk = hkdf(sha256, hexToBytes(sig), 'commons-nostr', 'nostr-secret-key-v1', 32);
+          sk = deriveSecretKey(sig);
           await SecureStore.setItemAsync(key, bytesToHex(sk).slice(2), {
             keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
           });

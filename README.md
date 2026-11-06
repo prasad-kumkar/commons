@@ -66,7 +66,7 @@ Solana Devnet and Bitcoin Testnet4. Same keys as mainnet; Bitcoin addresses are 
 (`src/lib/bitcoin.ts`). Circle's faucet (faucet.circle.com) funds USDC on every supported testnet.
 
 ## Signature lab (Profile → Signature lab)
-Signs with Privy and verifies on-device. All pass on TEE wallets:
+Signs with Privy and verifies on-device. All pass on TEE wallets, plus a Nostr check that the key derivation is deterministic and reproduces your npub:
 EVM `personal_sign`, `eth_signTypedData_v4`, `eth_signTransaction`, `secp256k1_sign`, EIP-7702 authorization;
 Solana `signMessage` (message is **base64** bytes), `signTransaction`; Bitcoin `useSignRawHash` for SegWit (ECDSA)
 and Taproot (BIP-340 Schnorr, signs with the tweaked output key).

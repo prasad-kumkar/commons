@@ -16,6 +16,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useNostr } from '@/hooks/use-nostr';
 import { useSponsoredSend } from '@/hooks/use-sponsored-send';
 import { linkedWalletAddress } from '@/hooks/use-wallets';
 import {
@@ -36,10 +37,12 @@ function useSigners(): Signers {
   const { signAuthorization } = useSign7702Authorization();
   const { signRawHash } = useSignRawHash();
   const sponsored = useSponsoredSend();
+  const { pubkey: nostrPubkey } = useNostr();
 
   const evmWallet = eth.wallets[0];
   const solWallet = sol.wallets?.[0];
   return {
+    nostrPubkey,
     evm: evmWallet && {
       address: evmWallet.address as Hex,
       provider: () => evmWallet.getProvider() as Promise<EvmProvider>,
@@ -88,7 +91,7 @@ export default function SignatureLab() {
   const passed = results.filter((r) => r.state === 'done' && r.ok).length;
   const finished = results.filter((r) => r.state === 'done' || r.state === 'error').length;
 
-  const groups = ['EVM', 'Solana', 'Bitcoin', 'Sponsored'] as const;
+  const groups = ['Nostr', 'EVM', 'Solana', 'Bitcoin', 'Sponsored'] as const;
 
   return (
     <Screen edges={['bottom']}>

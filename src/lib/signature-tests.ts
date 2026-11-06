@@ -23,6 +23,9 @@ import {
 import { recoverAuthorizationAddress } from 'viem/utils';
 
 import { findNetwork } from '@/lib/networks';
+import { DERIVE_MESSAGE, deriveSecretKey } from '@/lib/nostr-key';
+import * as nip19 from 'nostr-tools/nip19';
+import { getPublicKey } from 'nostr-tools/pure';
 
 export type TestResult = { ok: boolean; detail: string; signature?: string };
 
@@ -32,6 +35,8 @@ export type SolanaProvider = {
 };
 
 export type Signers = {
+  /** Current Nostr pubkey (hex), to check the derivation reproduces it. */
+  nostrPubkey?: string | null;
   evm?: { address: Hex; provider: () => Promise<EvmProvider> };
   /** Gas-sponsored sends via Privy's Wallet API (see use-sponsored-send). */
   sponsored?: {
@@ -52,7 +57,7 @@ export type Signers = {
 
 export type SignatureTest = {
   id: string;
-  group: 'EVM' | 'Solana' | 'Bitcoin' | 'Sponsored';
+  group: 'Nostr' | 'EVM' | 'Solana' | 'Bitcoin' | 'Sponsored';
   name: string;
   description: string;
   run: (s: Signers) => Promise<TestResult>;
@@ -151,6 +156,27 @@ async function poll<T>(fn: () => Promise<T | null>, timeoutMs = 45_000, everyMs 
 const SOLANA_DEVNET_CAIP2 = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1';
 
 export const SIGNATURE_TESTS: SignatureTest[] = [
+  {
+    id: 'nostr-derive',
+    group: 'Nostr',
+    name: 'Nostr key derivation',
+    description: 'Signs the derivation message twice: both signatures must match and re-derive your npub.',
+    async run(s) {
+      const evm = need(s.evm, 'EVM');
+      const p = await evm.provider();
+      const sign = () => p.request({ method: 'personal_sign', params: [DERIVE_MESSAGE, evm.address] }) as Promise<Hex>;
+      const a = await sign();
+      const b = await sign();
+      const pubkey = getPublicKey(deriveSecretKey(a));
+      const same = a === b;
+      const matches = pubkey === s.nostrPubkey;
+      return {
+        ok: same && matches,
+        detail: `${same ? 'deterministic' : 'NOT deterministic'}; ${matches ? 'matches' : 'does not match'} ${nip19.npubEncode(pubkey).slice(0, 16)}…`,
+        signature: short(a),
+      };
+    },
+  },
   {
     id: 'evm-personal-sign',
     group: 'EVM',
