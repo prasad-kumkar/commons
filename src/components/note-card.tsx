@@ -11,6 +11,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { PubkeyAvatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
+import { useNostr } from '@/hooks/use-nostr';
 import { useProfile, useReact, type Engagement } from '@/hooks/use-social';
 import { useTheme } from '@/hooks/use-theme';
 import { displayName, timeAgo } from '@/lib/nostr';
@@ -44,6 +45,7 @@ export function NoteCard({
   const react = useReact();
   const open = useOpenNote();
   const name = displayName(profile, note.pubkey);
+  const mine = useNostr().pubkey === note.pubkey;
 
   function openUser() {
     router.push({ pathname: '/user/[pubkey]', params: { pubkey: note.pubkey } });
@@ -84,7 +86,7 @@ export function NoteCard({
             count={stats?.likes}
             onPress={() => !stats?.liked && react.mutate({ note })}
           />
-          {profile?.evm_address ? (
+          {profile?.evm_address && !mine ? (
             <Action
               symbol="dollarsign.circle"
               label="Tip USDC"
